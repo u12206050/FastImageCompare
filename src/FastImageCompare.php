@@ -215,22 +215,46 @@ class FastImageCompare
      * @param float $enough percentage 0..1
      * @return array
      */
-    public function findDuplicates(array $inputImages, $enough = 0.05)
+    public function findDuplicates(array $inputImages, $enough = 0.05, $group = false)
     {
 
         $inputImages = array_unique($inputImages);
         $this->classify($inputImages);
         $output = [];
+        $groups = [];
         $compared = $this->compareArray($inputImages,$enough);
 
         foreach ($compared as $data) {
             if ($data[2] <= $enough) {
-                $output[] = $data[0];
-                $output[] = $data[1];
+                if ($group) {
+                    $key1 = $data[0];
+                    $key2 = $data[1];
+                    if (isset($groups[$key1]) && isset($groups[$key2])) {
+                        continue;
+                    } else if (!isset($groups[$key1]) && !isset($groups[$key2])) {
+                        $output[] = $groups[$key1] = $groups[$key2] = [
+                            $key1, $key2
+                        ];
+                    } else if (isset($groups[$key1])) {
+                        array_push($groups[$key1], $key2);
+                        $groups[$key2] = $groups[$key1];
+                    } else if (isset($groups[$key2])) {
+                        array_push($groups[$key2], $key1);
+                        $groups[$key1] = $groups[$key2];
+                    }
+                } else {
+                    $output[] = $data[0];
+                    $output[] = $data[1];
+                }
             }
         }
-        sort($output);
-        return array_unique($output);
+
+        if ($group) {
+            return $output;
+        } else {
+            sort($output);
+            return array_unique($output);
+        }
     }
 
     /**
