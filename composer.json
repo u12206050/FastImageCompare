@@ -1,5 +1,5 @@
 {
-  "name": "yncki/php-fast-image-compare",
+  "name": "day4/php-fast-image-compare",
   "description": "Image Comparer with different aspect ratios and sizes. Can extract duplicate and unique images in directory and much more.",
   "keywords":[
     "image",
@@ -19,10 +19,10 @@
     "php": ">=7.0",
     "ext-imagick": "*",
     "ext-gd": "*",
-    "gumlet/php-image-resize": "1.7.0",
-    "marc1706/fast-image-size": "^1.1",
-    "symfony/var-dumper": "^4.0",
-    "symfony/cache": "^4.0"
+    "gumlet/php-image-resize": "^1.9.0",
+    "marc1706/fast-image-size": "^1.1.1",
+    "symfony/var-dumper": "^5.0",
+    "symfony/cache": "^5.0"
   },
   "require-dev": {
     "phpunit/phpunit": "^7"
