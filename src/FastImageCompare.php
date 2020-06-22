@@ -124,30 +124,35 @@ class FastImageCompare
     }
 
     private function warmUpCache(array $inputImages) {
+        $chunks = array_chunk($inputImages, $this->getChunkSize(), true);
+        $totalChunks = count($chunks);
+
         $threads = [];
-        $chunks = array_chunk($inputImages,$this->getChunkSize(),true);
-        $total = count($chunks);
+        $totalThreads = $totalChunks < 8 ? $totalChunks : 8;
+        for ($i=0; $i < $totalThreads; ++$i) {
+            array_push($threads, new Thread(array($this, 'cacheIt')));
+        }
 
         $ns = Utils::getClassNameWithoutNamespace($this);
         $cacheAdapter = $this->getCacheAdapter();
 
-        foreach ($chunks as $index => $chunk) {
-            $this->printDebug("Processing chunk", ($index+1) . "/$total");
-            $thread = new Thread(array($this, 'cacheIt'));
-            $thread->start($chunk, $ns, $cacheAdapter);
-            array_push($threads, $thread);
-        }
-
-        $isAlive = true;
+        $nextChunk = 0;
+        $isAlive = $totalThreads;
         while ($isAlive) {
-            $isAlive = false;
+            $this->printDebug("Processing threads", "$isAlive/$totalThreads");
+            $isAlive = 0;
             foreach ($threads as $thread) {
                 if ($thread->isAlive()) {
-                    $isAlive = true;
-                    break 1;
+                    ++$isAlive;
+                } else {
+                    if ($nextChunk < $totalChunks) {
+                        $thread->start($chunks[$nextChunk], $ns, $cacheAdapter);
+                        $this->printDebug("Processing chunk", (++$nextChunk) . "/$totalChunks");
+                        ++$isAlive;
+                    }
                 }
             }
-            if ($isAlive) sleep(10);
+            if ($isAlive) sleep(ceil($isAlive / 2));
         }
     }
 
