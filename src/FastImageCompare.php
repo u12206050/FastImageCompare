@@ -44,6 +44,11 @@ class FastImageCompare
     private $debugEnabled = false;
 
     /**
+     * @var callable
+     */
+    private $logger = null;
+
+    /**
      * @var
      */
     private $temporaryDirectory;
@@ -104,7 +109,46 @@ class FastImageCompare
             //register
             $this->registerComparator($comparators);
         }
+    }
 
+    public static function cacheIt($files, $ns, $cacheAdapter) {
+        foreach ($files as $filePath) {
+            $key = $ns.'.'.md5($filePath);
+            $item = $cacheAdapter->getItem($key);
+            if (!$item->isHit()) {
+                $result = hash('crc32b',file_get_contents($filePath));
+                $item->set($result);
+                $cacheAdapter->save($item);
+            }
+        }
+    }
+
+    private function warmUpCache(array $inputImages) {
+        $threads = [];
+        $chunks = array_chunk($inputImages,$this->getChunkSize(),true);
+        $total = count($chunks);
+
+        $ns = Utils::getClassNameWithoutNamespace($this);
+        $cacheAdapter = $this->getCacheAdapter();
+
+        foreach ($chunks as $index => $chunk) {
+            $this->printDebug("Processing chunk", ($index+1) . "/$total");
+            $thread = new Thread(array($this, 'cacheIt'));
+            $thread->start($chunk, $ns, $cacheAdapter);
+            array_push($threads, $thread);
+        }
+
+        $isAlive = true;
+        while ($isAlive) {
+            $isAlive = false;
+            foreach ($threads as $thread) {
+                if ($thread->isAlive()) {
+                    $isAlive = true;
+                    break 1;
+                }
+            }
+            if ($isAlive) sleep(10);
+        }
     }
 
     /**
@@ -118,13 +162,22 @@ class FastImageCompare
         $inputImages = array_unique($inputImages);
         $output = [];
         $imageNameKeys = array_keys($inputImages);
+
+        if ($this->getCacheAdapter()) {
+            $this->printDebug("Cache", "Warming up...");
+            $this->warmUpCache($inputImages);
+            $this->printDebug("Cache", "Finished. Continuing...");
+        }
+
         //compare each with each
         for ($x = 0; $x < count($inputImages) - 1; $x++) {
             for ($y = $x + 1; $y < count($inputImages); $y++) {
                 $leftInput = $inputImages[$imageNameKeys[$x]];
                 $rightInput = $inputImages[$imageNameKeys[$y]];
                 $compareResult = $this->internalCompareImage($leftInput, $rightInput,$enoughDifference);
-                $output[] = [$leftInput, $rightInput, $compareResult];
+                if ($compareResult <= $enoughDifference) {
+                    $output[] = [$leftInput, $rightInput, $compareResult];
+                }
             }
         }
         return $output;
@@ -217,12 +270,12 @@ class FastImageCompare
      */
     public function findDuplicates(array $inputImages, $enough = 0.05, $group = false)
     {
-
         $inputImages = array_unique($inputImages);
         $this->classify($inputImages);
+        $compared = $this->compareArray($inputImages,$enough);
+
         $output = [];
         $groups = [];
-        $compared = $this->compareArray($inputImages,$enough);
 
         foreach ($compared as $data) {
             if ($data[2] <= $enough) {
@@ -301,7 +354,7 @@ class FastImageCompare
      * @param float $enoughDifference
      * @return array
      */
-    private function extractDuplicatesMap(array $inputImages, $enoughDifference = 0.05)
+    public function extractDuplicatesMap(array $inputImages, $enoughDifference = 0.05)
     {
         //TODO implement better chunking , recursive
         $inputImages = array_unique($inputImages);
@@ -309,9 +362,11 @@ class FastImageCompare
         $output = [];
         $chunks = array_chunk($inputImages,$this->getChunkSize(),true);
         $chunkedArray = [];
-        $needRechunk = count($chunks) > 1;
+        $total = count($chunks);
+        $needRechunk = $total > 1;
 
-        foreach ($chunks as $chunk) {
+        foreach ($chunks as $index => $chunk) {
+            $this->printDebug("Processing chunk", "$index/$total");
             $compared = $this->compareArray($chunk, $enoughDifference);
             foreach ($compared as $data)
             {
@@ -583,15 +638,16 @@ class FastImageCompare
         return $this->debugEnabled;
     }
 
-
-
-
     /**
      * @param bool $debugEnabled
      */
     public function setDebugEnabled($debugEnabled)
     {
         $this->debugEnabled = $debugEnabled;
+    }
+
+    public function setLogger($callable) {
+        $this->logger = $callable;
     }
 
     /**
@@ -626,7 +682,14 @@ class FastImageCompare
 
     private function printDebug($label,$data)
     {
-        if (!$this->isDebugEnabled()) return;
+        if (!$this->isDebugEnabled()) {
+            if ($this->logger) {
+                try {
+                    call_user_func($this->logger, "$label: $data");
+                } catch (\Throwable $err) {}
+            }
+            return;
+        }
         echo "<br/><b>$label</b>";
         if (!is_null($data))
         dump($data);
