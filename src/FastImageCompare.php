@@ -175,8 +175,10 @@ class FastImageCompare
         }
 
         //compare each with each
-        for ($x = 0; $x < count($inputImages) - 1; $x++) {
-            for ($y = $x + 1; $y < count($inputImages); $y++) {
+        $totalImages = count($inputImages);
+        for ($x = 0; $x < $totalImages - 1; ++$x) {
+            $this->printDebug("Processing", ($x + 1) . "/$totalImages");
+            for ($y = $x + 1; $y < $totalImages; ++$y) {
                 $leftInput = $inputImages[$imageNameKeys[$x]];
                 $rightInput = $inputImages[$imageNameKeys[$y]];
                 $compareResult = $this->internalCompareImage($leftInput, $rightInput,$enoughDifference);
